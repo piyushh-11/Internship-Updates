@@ -1,0 +1,3 @@
+PyGithub
+discord.py
+python-dotenv 
