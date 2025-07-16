@@ -139,7 +139,7 @@ celerybeat.pid
 .envrc
 
 # State File
-last_commits.json
+jobs.json
 .venv
 env/
 venv/

@@ -1,12 +1,14 @@
 # GitHub Internship Notifier for Discord
 
-A Python script that monitors GitHub repositories for new internship postings and sends Discord notifications when updates are detected. This tool specifically watches for new commits in internship repositories and alerts you immediately so you don't miss any opportunities!
+A Python script that monitors GitHub repositories for new internship job postings and sends Discord notifications when new opportunities are found. This tool specifically parses job tables in README.md files and alerts you immediately when new internships are posted so you don't miss any opportunities!
 
 ## 🎯 Features
 
-- **Real-time Monitoring**: Checks for new commits every 10 minutes
-- **Discord Notifications**: Sends formatted messages to your Discord channel
-- **State Management**: Tracks processed commits to avoid duplicates
+- **Job Table Parsing**: Parses markdown job tables from README.md files
+- **Real-time Monitoring**: Checks for new job postings every 10 minutes
+- **Discord Notifications**: Sends formatted messages with job details to your Discord channel
+- **State Management**: Tracks processed jobs to avoid duplicates
+- **Smart Deduplication**: Creates unique job IDs based on company, role, and location
 - **Error Handling**: Robust error handling and retry mechanisms
 - **Easy Setup**: Automated setup script included
 
@@ -99,7 +101,7 @@ Internship-Updates/
 ├── .gitignore             # Git ignore file
 ├── env.template           # Environment variables template
 ├── instructions.txt       # Detailed setup instructions
-├── last_commits.json      # State file for tracking commits
+├── jobs.json             # State file for tracking job postings
 ├── notifier.py           # Main application script
 ├── README.md             # This file
 ├── requirements.txt      # Python dependencies
@@ -112,20 +114,22 @@ Internship-Updates/
 Once running, the bot will:
 
 1. Check both repositories every 10 minutes
-2. Compare the latest commit SHA with the stored SHA
-3. Send a Discord notification if a new commit is found
-4. Update the stored SHA for the next check
+2. Parse job tables from README.md files
+3. Compare current jobs with stored jobs to find new postings
+4. Send a Discord notification for each new job found
+5. Update the stored jobs for the next check
 
 ### Example Notification
 
 ```
-🚨 New commit detected in vanshb03/Summer2026-Internships!
-📝 Message: Add new internship opportunities for December 2024
-👤 Author: John Doe
-🔗 Link: https://github.com/vanshb03/Summer2026-Internships/commit/abc123
-📅 Date: 2024-12-19 10:30:00
+🆕 New Internship Opportunity!
+🏢 Company: Optiver
+💼 Role: FPGA Engineer Intern
+📍 Location: Austin, TX
+🔗 Apply: https://optiver.com/working-at-optiver/career-opportunities/8033390002/
+📂 Source: vanshb03/Summer2026-Internships
 ---
-Check for new internship opportunities! 🎯
+Apply quickly! 🚀
 ```
 
 ## 🔍 Troubleshooting

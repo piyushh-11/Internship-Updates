@@ -2,88 +2,200 @@ import os
 import json
 import asyncio
 import discord
+import requests
+import re
 from github import Github
 from dotenv import load_dotenv
+from bs4 import BeautifulSoup
+import hashlib
 
 # Load environment variables
 load_dotenv()
 
 # Constants
 REPOS = ["vanshb03/Summer2026-Internships", "SimplifyJobs/Summer2026-Internships"]
-STATE_FILE = "last_commits.json"
+STATE_FILE = "jobs.json"
 
-def load_last_commits():
-    """Load the last known commit SHAs from the state file."""
+def load_jobs():
+    """Load the stored jobs from the state file."""
     try:
         with open(STATE_FILE, 'r') as f:
             return json.load(f)
     except FileNotFoundError:
         # If file doesn't exist, return default structure
-        return {repo: None for repo in REPOS}
+        return {repo: {} for repo in REPOS}
     except json.JSONDecodeError:
         # If file is corrupted, return default structure
         print(f"Warning: {STATE_FILE} is corrupted, resetting to default state")
-        return {repo: None for repo in REPOS}
+        return {repo: {} for repo in REPOS}
 
-def save_last_commits(data):
-    """Save the last known commit SHAs to the state file."""
+def save_jobs(data):
+    """Save the jobs data to the state file."""
     with open(STATE_FILE, 'w') as f:
         json.dump(data, f, indent=2)
 
-def check_github_for_new_commits():
-    """Check GitHub repositories for new commits and return notifications."""
+def extract_url_from_html(html_content):
+    """Extract the actual URL from HTML link content."""
+    if not html_content:
+        return None
+    
+    # Try to find href attribute
+    href_match = re.search(r'href="([^"]*)"', html_content)
+    if href_match:
+        return href_match.group(1)
+    
+    # If no href found, return None
+    return None
+
+def create_job_id(company, role, location):
+    """Create a unique identifier for a job posting."""
+    # Clean up the data and create a hash
+    clean_data = f"{company.strip().lower()}_{role.strip().lower()}_{location.strip().lower()}"
+    return hashlib.md5(clean_data.encode()).hexdigest()
+
+def parse_job_table(markdown_content, repo_name):
+    """Parse job table from markdown content."""
+    jobs = {}
+    
+    # Split content into lines
+    lines = markdown_content.split('\n')
+    
+    # Find the table header
+    header_line = None
+    for i, line in enumerate(lines):
+        if '| Company |' in line and '| Role |' in line:
+            header_line = i
+            break
+    
+    if header_line is None:
+        print(f"No job table found in {repo_name}")
+        return jobs
+    
+    # Skip header and separator lines
+    current_company = None
+    
+    for line in lines[header_line + 2:]:  # Skip header and separator
+        line = line.strip()
+        if not line or not line.startswith('|'):
+            continue
+        
+        # Parse the table row
+        columns = [col.strip() for col in line.split('|')[1:-1]]  # Remove empty first/last elements
+        
+        if len(columns) < 4:
+            continue
+        
+        company = columns[0].strip()
+        role = columns[1].strip()
+        location = columns[2].strip()
+        application_link = columns[3].strip()
+        
+        # Handle company continuation (↳ symbol)
+        if company == '↳' and current_company:
+            company = current_company
+        elif company and company != '↳':
+            current_company = company
+            # Clean up company name (remove markdown formatting)
+            company = re.sub(r'\*\*|\[|\]|\(.*?\)', '', company).strip()
+            current_company = company
+        
+        # Skip empty rows
+        if not company or not role:
+            continue
+        
+        # Extract URL from application link
+        url = extract_url_from_html(application_link)
+        
+        # Clean up location (remove HTML tags)
+        location = re.sub(r'<[^>]*>', '', location).replace('</br>', ', ').replace('<br>', ', ').strip()
+        
+        # Create job entry
+        job_id = create_job_id(company, role, location)
+        jobs[job_id] = {
+            'company': company,
+            'role': role,
+            'location': location,
+            'link': url,
+            'repo': repo_name
+        }
+    
+    return jobs
+
+def fetch_readme_content(repo_name):
+    """Fetch README.md content from GitHub repository."""
     try:
         # Initialize GitHub client
         g = Github(os.getenv("GITHUB_TOKEN"))
         
-        # Load last known commits
-        last_commits = load_last_commits()
-        notifications = []
+        # Get repository
+        repo = g.get_repo(repo_name)
+        
+        # Get README.md content
+        readme = repo.get_contents("README.md")
+        content = readme.decoded_content.decode('utf-8')
+        
+        return content
+    except Exception as e:
+        print(f"Error fetching README for {repo_name}: {str(e)}")
+        return None
+
+def check_for_new_jobs():
+    """Check for new job postings and return notifications."""
+    try:
+        # Load stored jobs
+        stored_jobs = load_jobs()
+        new_jobs = []
         
         # Check each repository
         for repo_name in REPOS:
             try:
-                print(f"Checking {repo_name}...")
+                print(f"Checking jobs in {repo_name}...")
                 
-                # Get repository object
-                repo = g.get_repo(repo_name)
+                # Fetch README content
+                readme_content = fetch_readme_content(repo_name)
+                if not readme_content:
+                    continue
                 
-                # Get the latest commit on the main branch
-                commits = repo.get_commits(sha=repo.default_branch)
-                latest_commit = commits[0]
+                # Parse job table
+                current_jobs = parse_job_table(readme_content, repo_name)
                 
-                # Check if this is a new commit
-                if (last_commits[repo_name] != latest_commit.sha and 
-                    last_commits[repo_name] is not None):
-                    
-                    # Create notification message
-                    message = (
-                        f"🚨 **New commit detected in {repo_name}!**\n"
-                        f"📝 **Message:** {latest_commit.commit.message}\n"
-                        f"👤 **Author:** {latest_commit.commit.author.name}\n"
-                        f"🔗 **Link:** {latest_commit.html_url}\n"
-                        f"📅 **Date:** {latest_commit.commit.author.date}\n"
-                        f"---\n"
-                        f"Check for new internship opportunities! 🎯"
-                    )
-                    notifications.append(message)
-                    print(f"New commit found in {repo_name}")
+                # Check for new jobs
+                stored_repo_jobs = stored_jobs.get(repo_name, {})
                 
-                # Update the last commit SHA for this repo
-                last_commits[repo_name] = latest_commit.sha
+                for job_id, job_data in current_jobs.items():
+                    if job_id not in stored_repo_jobs:
+                        new_jobs.append(job_data)
+                        print(f"New job found: {job_data['company']} - {job_data['role']}")
+                
+                # Update stored jobs for this repo
+                stored_jobs[repo_name] = current_jobs
                 
             except Exception as e:
                 print(f"Error checking {repo_name}: {str(e)}")
                 continue
         
-        # Save updated commit SHAs
-        save_last_commits(last_commits)
+        # Save updated jobs
+        save_jobs(stored_jobs)
         
-        return notifications
+        return new_jobs
         
     except Exception as e:
-        print(f"Error in check_github_for_new_commits: {str(e)}")
+        print(f"Error in check_for_new_jobs: {str(e)}")
         return []
+
+def format_job_notification(job):
+    """Format a job posting for Discord notification."""
+    message = (
+        f"🆕 **New Internship Opportunity!**\n"
+        f"🏢 **Company:** {job['company']}\n"
+        f"💼 **Role:** {job['role']}\n"
+        f"📍 **Location:** {job['location']}\n"
+    )
+    
+    if job['link']:
+        message += f"🔗 **Apply:** {job['link']}\n"
+    
+    return message
 
 class InternshipNotifier(discord.Client):
     def __init__(self, *args, **kwargs):
@@ -102,9 +214,10 @@ class InternshipNotifier(discord.Client):
         
         if channel:
             startup_message = (
-                f"🤖 **Internship Bot Started!**\n"
+                f"🤖 **Internship Job Tracker Started!**\n"
                 f"📊 Monitoring repositories: {', '.join(REPOS)}\n"
-                f"🔄 Checking for updates every 10 minutes\n"
+                f"🔄 Checking for new job postings every 10 minutes\n"
+                f"💼 Tracking job tables for new opportunities\n"
                 f"✅ Bot is now online and ready!"
             )
             await channel.send(startup_message)
@@ -116,7 +229,7 @@ class InternshipNotifier(discord.Client):
         self.bg_task = self.loop.create_task(self.background_task())
 
     async def background_task(self):
-        """Background task that checks for new commits every 10 minutes."""
+        """Background task that checks for new jobs every 10 minutes."""
         await self.wait_until_ready()
         
         # Get the Discord channel
@@ -128,20 +241,26 @@ class InternshipNotifier(discord.Client):
             return
         
         print(f"Monitoring channel: {channel.name}")
-        print("Starting monitoring loop...")
+        print("Starting job monitoring loop...")
         
         while not self.is_closed():
             try:
-                # Check for new commits
-                notifications = check_github_for_new_commits()
+                # Check for new jobs
+                new_jobs = check_for_new_jobs()
                 
-                # Send notifications if any
-                if notifications:
-                    for message in notifications:
+                # Send notifications for new jobs
+                if new_jobs:
+                    for job in new_jobs:
+                        message = format_job_notification(job)
                         await channel.send(message)
-                        print(f"Sent notification to Discord")
+                        print(f"Sent job notification: {job['company']} - {job['role']}")
+                        
+                        # Small delay between messages to avoid rate limiting
+                        await asyncio.sleep(1)
+                    
+                    print(f"Found and notified about {len(new_jobs)} new jobs")
                 else:
-                    print("No new commits found")
+                    print("No new jobs found")
                 
                 # Wait 10 minutes before next check
                 await asyncio.sleep(600)  # 600 seconds = 10 minutes

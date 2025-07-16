@@ -3,7 +3,7 @@
 # GitHub Internship Notifier Setup Script
 # This script sets up the virtual environment and installs dependencies
 
-echo "🚀 Setting up GitHub Internship Notifier for Discord..."
+echo "🚀 Setting up GitHub Internship Job Tracker for Discord..."
 echo "================================================"
 
 # Check if Python 3 is installed
