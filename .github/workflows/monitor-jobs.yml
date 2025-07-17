@@ -34,6 +34,7 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
         DISCORD_TOKEN: ${{ secrets.DISCORD_TOKEN }}
         DISCORD_CHANNEL_ID: ${{ secrets.DISCORD_CHANNEL_ID }}
+        DISCORD_LOG_CHANNEL_ID: ${{ secrets.DISCORD_LOG_CHANNEL_ID }}
       run: python notifier_github_actions.py
     
     - name: Commit and push changes

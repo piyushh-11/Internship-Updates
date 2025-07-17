@@ -8,6 +8,7 @@ from github import Github
 from dotenv import load_dotenv
 from bs4 import BeautifulSoup
 import hashlib
+from datetime import datetime
 
 # Load environment variables
 load_dotenv()
@@ -242,10 +243,43 @@ async def send_discord_notifications(new_jobs):
     except Exception as e:
         print(f"Error running Discord bot: {str(e)}")
 
+async def send_log_message(message):
+    """Send a log message to the designated log channel."""
+    # Set up Discord client for logging
+    intents = discord.Intents.default()
+    intents.message_content = True
+    client = discord.Client(intents=intents)
+    
+    @client.event
+    async def on_ready():
+        print(f'Logged in for logging as {client.user} (ID: {client.user.id})')
+        
+        # Get the Discord log channel
+        log_channel_id = int(os.getenv("DISCORD_LOG_CHANNEL_ID"))
+        channel = client.get_channel(log_channel_id)
+        
+        if not channel:
+            print(f"Error: Could not find log channel with ID {log_channel_id}")
+            await client.close()
+            return
+        
+        # Send the log message
+        await channel.send(message)
+        print(f"Sent log message to channel: {channel.name}")
+        
+        await client.close()
+    
+    try:
+        await client.start(os.getenv("DISCORD_TOKEN"))
+    except discord.LoginFailure:
+        print("Error: Invalid Discord token for logging. Please check your DISCORD_TOKEN")
+    except Exception as e:
+        print(f"Error sending log message: {str(e)}")
+
 async def main():
     """Main function to run the job checker once."""
     # Check if all required environment variables are set
-    required_vars = ["GITHUB_TOKEN", "DISCORD_TOKEN", "DISCORD_CHANNEL_ID"]
+    required_vars = ["GITHUB_TOKEN", "DISCORD_TOKEN", "DISCORD_CHANNEL_ID", "DISCORD_LOG_CHANNEL_ID"]
     missing_vars = [var for var in required_vars if not os.getenv(var)]
     
     if missing_vars:
@@ -254,15 +288,29 @@ async def main():
             print(f"  - {var}")
         return
     
+    # Log start of execution
+    start_time = datetime.now()
+    start_message = f"🚀 **Job Checker Started**\n📅 Time: {start_time.strftime('%Y-%m-%d %H:%M:%S')}\n🔍 Checking repositories: {', '.join(REPOS)}"
+    await send_log_message(start_message)
+    
     # Check for new jobs
     print("Starting job check...")
     new_jobs = check_for_new_jobs()
     
+    # Send notifications if new jobs found
     if new_jobs:
         print(f"Found {len(new_jobs)} new jobs, sending Discord notifications...")
         await send_discord_notifications(new_jobs)
+        result_message = f"✅ **Job Check Complete**\n📊 New jobs found: {len(new_jobs)}\n📢 Notifications sent successfully"
     else:
         print("No new jobs found")
+        result_message = f"✅ **Job Check Complete**\n📊 New jobs found: 0\n💤 No notifications needed"
+    
+    # Log completion
+    end_time = datetime.now()
+    duration = end_time - start_time
+    final_message = f"{result_message}\n⏱️ Duration: {duration.total_seconds():.2f} seconds\n📅 Completed: {end_time.strftime('%Y-%m-%d %H:%M:%S')}"
+    await send_log_message(final_message)
 
 if __name__ == "__main__":
     asyncio.run(main())
