@@ -139,7 +139,6 @@ celerybeat.pid
 .envrc
 
 # State File
-jobs.json
 .venv
 env/
 venv/
