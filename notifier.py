@@ -208,23 +208,6 @@ class InternshipNotifier(discord.Client):
         print(f'Logged in as {self.user} (ID: {self.user.id})')
         print('------')
         
-        # Send startup message to Discord channel
-        channel_id = int(os.getenv("DISCORD_CHANNEL_ID"))
-        channel = self.get_channel(channel_id)
-        
-        if channel:
-            startup_message = (
-                f"🤖 **Internship Job Tracker Started!**\n"
-                f"📊 Monitoring repositories: {', '.join(REPOS)}\n"
-                f"🔄 Checking for new job postings every 10 minutes\n"
-                f"💼 Tracking job tables for new opportunities\n"
-                f"✅ Bot is now online and ready!"
-            )
-            await channel.send(startup_message)
-            print(f"Sent startup message to Discord channel: {channel.name}")
-        else:
-            print(f"Warning: Could not find channel with ID {channel_id}")
-        
         # Start the background task
         self.bg_task = self.loop.create_task(self.background_task())
 
